@@ -1,138 +1,167 @@
-from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QImage, QPixmap
 import PyQt6.QtWidgets as qt
-import cv2 as cv
+from camera import CameraView
+from timer import Timer
 
+from os import listdir, remove, getcwd
+from os.path import exists, isfile
 from sys import exit
-from os import getcwd
 
 class Window(qt.QWidget):
 
-    imsize = (400, 400)
+    extensions = {'.jpg', 'png', 'jpeg'}
 
-    def __init__(self):
-        # Basic window setup
-        super().__init__()
+    def __init__(self, **kwargs):
+        """
+        Create a new Window object
+        
+        Parameters:
+            kwargs  : keyword arguments to be passed to the QWidget super-constructor        
+        """
+
+        super().__init__(**kwargs)
         self.setWindowTitle('Image Capture Tool')
 
-        # Setup the video capture
-        self.video = cv.VideoCapture(-1)
-        self.video.set(cv.CAP_PROP_BUFFERSIZE, 1)
-
-        # Create the window and its contents
         self.create_widgets()
         self.position_widgets()
         self.connect_widgets()
 
-        # Create a variable to track how many images have been taken so far
-        self.images_taken = 0
-
     def create_widgets(self):
-        self.imageCount = qt.QSpinBox(parent=self)
-        self.imageCount.setRange(1, 500)
+        """ Create the induvidual widgets to be used by the Window object """
 
-        self.refreshRate = qt.QSpinBox(parent=self)
+        # Camera feed used the display and access the device's webcam
+        self.feed               = CameraView(parent=self, imageScale=1.5)
+
+        # Timer used to regularly capture and save images
+        self.captureTimer       = Timer(parent=self)
+
+        # Number of images to capture
+        self.imageCounter       = qt.QSpinBox(parent=self)
+        self.imageCounter.setRange(1, 500)
+
+        # Number of images to capture per second
+        self.refreshRate        = qt.QSpinBox(parent=self)
         self.refreshRate.setRange(1, 100)
+        self.refreshRate.setValue(100)
 
-        self.activeDirectory = qt.QLineEdit(parent=self)
-        self.activeDirectory.setText('Please select...')
-        self.activeDirectory.setReadOnly(True)
+        # Directory to store the produced images in
+        self.targetDirectory    = qt.QLineEdit(parent=self)
+        self.targetDirectory.setText(getcwd())
+        self.targetDirectory.setReadOnly(True)
 
-        self.labelsFile = qt.QLineEdit(parent=self)
-        self.labelsFile.setText('Please select...')
-        self.labelsFile.setReadOnly(True)
+        # CSV file to store the associated image labels in
+        self.targetLabels       = qt.QLineEdit(parent=self)
+        self.targetLabels.setText('Please select...')
+        self.targetLabels.setReadOnly(True)
 
-        self.submit = qt.QPushButton(parent=self)
-        self.submit.setText('Submit')
+        # Submit button to begin execution
+        self.submitButton       = qt.QPushButton(parent=self)
+        self.submitButton.setText('Submit')
 
-        self.selectDirectory = qt.QPushButton(parent=self)
+        # Clear button to remove all images from the target directory
+        self.clearDirectory     = qt.QPushButton(parent=self)
+        self.clearDirectory.setText('Clear Directory')
+
+        # Set the target directory to be the current working directory
+        self.setCwd             = qt.QPushButton(parent=self)
+        self.setCwd.setText('Set Working Directory')
+
+        # Change the target directory
+        self.selectDirectory    = qt.QPushButton(parent=self)
         self.selectDirectory.setText('Select Directory')
 
-        self.selectLabelsFile = qt.QPushButton(parent=self)
-        self.selectLabelsFile.setText('Select Labels File')
+        # Change the labels CSV file
+        self.selectLabels       = qt.QPushButton(parent=self)
+        self.selectLabels.setText('Select Labels File')
 
-        self.progress = qt.QProgressBar(parent=self)
-        self.progress.setRange(0, 100)
-
-        self.image = qt.QLabel(parent=self)
-        self.image.setMaximumSize(self.imsize[0], self.imsize[1])
-        
-        self.clock = QTimer(parent=self)
-        self.clock.setInterval(50)
-        self.slot_update()
-
-        self.captureTimer = QTimer(parent=self)
+        # Progress bar to show capture progress to the user
+        self.progressBar        = qt.QProgressBar(parent=self)
+        self.progressBar.setRange(0, 100)
+        self.progressBar.setDisabled(True)
 
     def position_widgets(self):
-        layout = qt.QHBoxLayout()
+        """ Position the created widgets within the Window object """
+
+        layout = qt.QVBoxLayout()
+        controls = qt.QHBoxLayout()
+        form_left = qt.QFormLayout()
+        form_right = qt.QFormLayout()
+
+        form_left.addRow('Images', self.imageCounter)
+        form_left.addRow('Refresh Rate', self.refreshRate)
+        form_left.addRow('Directory', self.targetDirectory)
+        form_left.addRow('Label File', self.targetLabels)
+        form_left.addRow(self.submitButton)
+
+        form_right.addWidget(self.clearDirectory)
+        form_right.addWidget(self.setCwd)
+        form_right.addWidget(self.selectDirectory)
+        form_right.addWidget(self.selectLabels)
+        form_right.addWidget(self.progressBar)
+
+        controls.addLayout(form_left)
+        controls.addLayout(form_right)
+        layout.addWidget(self.feed)
+        layout.addLayout(controls)
         self.setLayout(layout)
-        control = qt.QVBoxLayout()
-        layout.addLayout(control)
-        form = qt.QFormLayout()
-        control.addLayout(form)
-
-        form.addRow('Images (#)', self.imageCount)
-        form.addRow('Refresh Rate (#/s)', self.refreshRate)
-        form.addRow('Active Directory', self.activeDirectory)
-        form.addRow('Labels File', self.labelsFile)
-        form.addRow(self.submit)
-
-        selections = qt.QHBoxLayout()
-        control.addLayout(selections)
-
-        selections.addWidget(self.selectDirectory)
-        selections.addWidget(self.selectLabelsFile)
-
-        control.addWidget(self.progress)
-
-        layout.addWidget(self.image)
 
     def connect_widgets(self):
+        """ Connect the Window object's widgets together to produce the desired functionality """
+
+        self.submitButton.clicked.connect(self.slot_begin)
+        self.clearDirectory.clicked.connect(self.slot_clear_directory)
+        self.setCwd.clicked.connect(self.slot_set_cwd)
         self.selectDirectory.clicked.connect(self.slot_select_directory)
-        self.selectLabelsFile.clicked.connect(self.slot_select_labels_file)
-        self.submit.clicked.connect(self.slot_submit)
+        self.selectLabels.clicked.connect(self.slot_select_labels_file)
+        
+    def capture(self):
+        """ Capture a single image and save it to the target directory with the associated label """
 
-        self.clock.timeout.connect(self.slot_update)
-        self.captureTimer.timeout.connect(self.slot_capture_image)
+        image = self.feed.get_image()
+        path = f'{self.targetDirectory.text()}/image_{self.captureTimer.get_completed()}.jpg'
 
-        self.clock.start()
-
-    def slot_update(self):
-        image = self.video.read()[1]
-        image = cv.cvtColor(image, cv.COLOR_RGB2BGR)
-        image = cv.flip(image, flipCode=1)
-        image = QPixmap(QImage(image, image.shape[1], image.shape[0], image.shape[1] * 3, QImage.Format.Format_RGB888))
-        image = image.scaled(self.imsize[0], self.imsize[1])
-        self.image.setPixmap(image)
-
-    def slot_submit(self):
-        self.images_taken = 0
-        self.captureTimer.setInterval(int(1000/self.refreshRate.value()))
-        self.progress.setValue(0)
-        self.captureTimer.start()
-
-    def slot_capture_image(self):
-        if self.images_taken < self.imageCount.value():
-            print(f'Saved to {self.activeDirectory.text()}/image_{self.images_taken}.jpg')
-            image = self.image.pixmap()
-            image.save(f'{self.activeDirectory.text()}/image_{self.images_taken}.jpg')
-            self.images_taken += 1
+        if exists(path):
+            print(f'Duplicate: {path}')
         else:
-            self.captureTimer.stop()
+            response = image.save(path)
+            if response:
+                print(f'Saved: {path}')
+            else:
+                print(f'Unknown: {path}')
 
-        int_images_taken = int(self.images_taken / self.imageCount.value() * 100)
-        if int_images_taken > 100: int_images_taken = 100
-        self.progress.setValue(int_images_taken)
+        self.progressBar.setValue(self.captureTimer.get_completion())
+
+# -- Slots --
+
+    def slot_begin(self):
+        self.progressBar.setDisabled(False)
+        self.progressBar.setValue(0)
+        self.captureTimer.run(self.capture, self.imageCounter.value(), self.refreshRate.value(), end=self.slot_end)
+
+    def slot_end(self):
+        self.progressBar.setValue(0)
+        self.progressBar.setDisabled(True)
+
+    def slot_clear_directory(self):
+        root = f'{self.targetDirectory.text()}/'
+
+        for file in [f for f in listdir(root) if isfile(root+f)]:
+            path = root + file
+            if any([file.find(e) != -1 for e in self.extensions]):
+                remove(path)
+                print(f'Removed: {path}')
+
+    def slot_set_cwd(self):
+        self.targetDirectory.setText(getcwd())
         
     def slot_select_directory(self):
-        dir = qt.QFileDialog.getExistingDirectoryUrl(parent=self).toLocalFile()
+        dir = qt.QFileDialog.getExistingDirectoryUrl(parent=self, options=qt.QFileDialog.Option.DontUseNativeDialog).toLocalFile()
         if len(dir) > 0:
-            self.activeDirectory.setText(dir)
+            self.targetDirectory.setText(dir)
 
     def slot_select_labels_file(self):
-        file = qt.QFileDialog.getOpenFileUrl(parent=self)[0].toLocalFile()
+        file = qt.QFileDialog.getOpenFileUrl(parent=self, options=qt.QFileDialog.Option.DontUseNativeDialog)[0].toLocalFile()
         if len(file) > 0:
-            self.labelsFile.setText(file)
+            self.targetLabels.setText(file)
 
 if __name__ == '__main__':
     app = qt.QApplication([])
