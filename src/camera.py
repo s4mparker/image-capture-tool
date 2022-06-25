@@ -21,7 +21,13 @@ class CameraView(QLabel):
         self.blankImage = QPixmap(blank)
 
         # Create a variable to hold the current camera frame
-        self.image = None
+        self.image = self.blankImage
+
+        # Create a variable to hold the current filter
+        self.filter = None
+
+        # Create a variable to hold the current blur
+        self.blur = 0
 
         # Create the video capture object used to get the camera feed
         self.feed = cv2.VideoCapture(-1)
@@ -36,6 +42,12 @@ class CameraView(QLabel):
         self.slot_update()
         self.timer.start()
 
+    def set_filter(self, filter):
+        self.filter = filter
+
+    def set_blur(self, blur):
+        self.blur = blur
+
     def slot_update(self):
         # Get the latest frame
         response = self.feed.read()
@@ -46,6 +58,11 @@ class CameraView(QLabel):
         # Otherwise - use the camera feed's image
         else:
             raw_image = cv2.flip(cv2.cvtColor(response[1], cv2.COLOR_RGB2BGR), 1)
+            if self.blur > 0:
+                raw_image = cv2.GaussianBlur(raw_image, ksize=(0, 0), sigmaX=self.blur)
+            if self.filter:
+                raw_image = self.filter(raw_image)
+
             self.image = QPixmap(QImage(raw_image, raw_image.shape[1], raw_image.shape[0], raw_image.shape[1]*3, QImage.Format.Format_RGB888))
         
         # Scale the image if required

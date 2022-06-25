@@ -46,9 +46,9 @@ class Timer(QTimer):
     def slot_timeout(self):
         # Check if the function should be called again
         if self.completed < self.target:
+            self.completed += 1
             if self.func:
                 self.func()
-            self.completed += 1
         else:
             self.stop()
             if self.end:
