@@ -1,7 +1,6 @@
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QLabel
-from PyQt6.QtGui import QImage, QPixmap, QColor
-
+from PyQt6.QtGui import QImage, QPixmap
 import cv2
 
 class CameraView(QLabel):
