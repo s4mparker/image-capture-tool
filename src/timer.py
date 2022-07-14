@@ -1,6 +1,6 @@
 from PyQt6.QtCore import QTimer, pyqtSignal
 
-class CallbackTimer(QTimer):
+class Timer(QTimer):
 
     step    = pyqtSignal(float)
     end     = pyqtSignal()
