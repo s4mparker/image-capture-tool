@@ -1,238 +1,127 @@
-from .camera import CameraView
-from .timer import Timer
-from .transforms import *
-
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QMainWindow
 from os import listdir, remove, getcwd
 from os.path import exists, isfile, isdir
-from sys import exit
 
-import PyQt6.QtWidgets as qt
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QMainWindow, QWidget, QToolBar, QSpinBox, QLabel, QLineEdit, QFormLayout, QFileDialog, QProgressBar
+from PyQt6.QtGui import QIcon, QAction
 
-class Interface(qt.QWidget):
+from .camera import CameraView
+from .timer import Timer
 
-    def __init__(self, app, **kwargs):
-        """ 
-        Create a new Interface object
-
-        Parameters:
-            app     : the application the interface lives within
-            kwargs  : keyword arguments passed to the QWidget super-constructor
-        """
-
-        super().__init__(**kwargs)
-
-        self.app = app
-        self.labels_file = None
-
-        self.createWidgets()
-        self.setWidgets()
-        self.positionWidgets()
-        self.connectWidgets()
-
-        self.slot_reset_clicked()
-
-    def createWidgets(self):
-        """ 
-        Create the widgets required to construct the user interface
-        """
-
-        self.camera         = CameraView(parent=self)
-        self.timer          = Timer(parent=self)
-
-        self.instructions   = qt.QLabel(parent=self)
-
-        self.images         = qt.QSpinBox(parent=self)
-        self.refresh        = qt.QSpinBox(parent=self)
-        self.classname      = qt.QLineEdit(parent=self)
-        self.directory      = qt.QLineEdit(parent=self)
-        self.labels         = qt.QLineEdit(parent=self)
-        self.format         = qt.QComboBox(parent=self)
-        self.filter         = qt.QComboBox(parent=self)
-        self.blur           = qt.QSlider(orientation=Qt.Orientation.Horizontal, parent=self)
-
-        self.generate       = qt.QPushButton(parent=self)
-        self.progress       = qt.QProgressBar(parent=self)
-
-    def setWidgets(self):
-        """  
-        Set the initial parameters of the user interface's widgets
-        """
-
-        self.instructions.setText('Add instructions here')
-        self.instructions.setWordWrap(True)
-
-        self.images.setRange(1, 500)
-        self.refresh.setRange(1, 100)
-        self.directory.setReadOnly(True)
-        self.labels.setReadOnly(True)
-        for (text, extension) in [('JPG (.jpg)', 'jpg'), ('PNG (.png)', 'png')]:
-            self.format.addItem(text, extension)
-        for (text, filter) in [('None', None), ('Greyscale', greyscale), ('Red', red), ('Green', green), ('Blue', blue), ('Corners (Canny)', canny)]:
-            self.filter.addItem(text, filter)
-        self.blur.setRange(0, 500)
-
-        self.generate.setText('Generate Images')
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        self.progress.setDisabled(True)
-
-    def positionWidgets(self):
-        """ 
-        Position the widgets within the user interface 
-        """
-
-        main = qt.QHBoxLayout()
-
-        controls = qt.QVBoxLayout()
-        controls.addWidget(self.instructions)
-
-        form = qt.QFormLayout()
-        form.addRow('Images (#)', self.images)
-        form.addRow('Refresh Rate (#/sec)', self.refresh)
-        form.addRow('Class Name', self.classname)
-        form.addRow('Directory', self.directory)
-        form.addRow('Labels File', self.labels)
-        form.addRow('Format/Extension', self.format)
-        form.addRow('Filter', self.filter)
-        form.addRow('Blur', self.blur)
-        form.addRow(self.generate)
-        form.addRow(self.progress)
-
-        controls.addLayout(form)
-        controls.addStretch(10)
-
-        main.addLayout(controls)
-        main.addWidget(self.camera)
-
-        self.setLayout(main)
-
-    def connectWidgets(self):
-        """  
-        Connect the widgets' slots/signals together
-        """
-
-        self.filter.currentIndexChanged.connect(self.slot_filter_changed)
-        self.blur.valueChanged.connect(self.slot_blur_changed)
-        self.generate.clicked.connect(self.slot_generate_clicked)
-
-        menu = self.app.menuBar()
-        file = menu.addMenu('File')
-        file.addAction('Clear', self.slot_clear_clicked)
-        file.addAction('Reset', self.slot_reset_clicked)
-
-        menu.addAction('Select Directory', self.slot_select_directory_clicked)
-        menu.addAction('Select Labels', self.slot_select_labels_clicked)
-
-# --- Slots -------------------------------------------------------------------------------------------------
-
-    def slot_generate_clicked(self):
-        """  
-        Triggered when the generate button is clicked
-        """
-
-        self.labels_file = open(self.labels.text(), 'a')
-        self.progress.setDisabled(False)
-        self.progress.setValue(0)
-        self.timer.run(self.slot_capture_image, self.images.value(), self.refresh.value(), end=self.slot_generate_complete)
-    def slot_generate_complete(self):
-        """  
-        Triggered when all required images have been captured
-        """
-
-        self.labels_file.close()
-        self.progress.setValue(0)
-        self.progress.setDisabled(True)
-    def slot_capture_image(self):
-        """ 
-        Triggered when a new image needs to be captured & saved 
-        """
-
-        image = self.camera.get_image()
-        path = f'{self.directory.text()}/image_{self.timer.get_completed()}.{self.format.currentData()}'
-
-        if exists(path):
-            print(f'Duplicate: {path}')
-        else:
-            response = image.save(path)
-            if response:
-                self.labels_file.write(f'image_{self.timer.get_completed()}.{self.format.currentData()},{self.classname.text()}\n')
-                print(f'Saved: {path}')
-            else:
-                print(f'Unknown: {path}')
-
-        self.progress.setValue(self.timer.get_completion())
-    def slot_filter_changed(self):
-        """ 
-        Triggered when the filter is changed 
-        """
-
-        self.camera.set_filter(self.filter.currentData())
-    def slot_blur_changed(self):
-        """  
-        Triggered when the blur is changed
-        """
-
-        self.camera.set_blur(int(self.blur.value() / 100))
-    def slot_clear_clicked(self):
-        """  
-        Triggered when the clear button (in the menu) is clicked
-        """
-
-        # root = f'{self.directory.text()}/'
-
-        # for file in [f for f in listdir(root) if isfile(root+f)]:
-        #     path = root + file
-        #     if any([file.find(e) != -1 for e in self.extensions]):
-        #         remove(path)
-        #         print(f'Removed: {path}')
-
-        pass
-    def slot_reset_clicked(self):
-        """  
-        Triggered when the reset button (in the menu) is clicked
-        """
-
-        self.images.setValue(10)
-        self.refresh.setValue(100)
-        self.directory.setText(getcwd())
-        self.labels.setText(f'{getcwd()}/labels.csv')
-        self.classname.setText('')
-    def slot_select_directory_clicked(self):
-        """  
-        Triggered when the select directory button (in the menu) is clicked
-        """
-
-        dir = qt.QFileDialog.getExistingDirectoryUrl(parent=self, options=qt.QFileDialog.Option.DontUseNativeDialog).toLocalFile()
-        if len(dir) > 0:
-            self.directory.setText(dir)
-    def slot_select_labels_clicked(self):
-        """  
-        Triggered when the select labels button (in the menu) is clicked
-        """
-        
-        file = qt.QFileDialog.getOpenFileUrl(parent=self, filter='All (*.csv)' , options=qt.QFileDialog.Option.DontUseNativeDialog)[0].toLocalFile()
-        if len(file) > 0:
-            self.labels.setText(file)
-
-class Application(qt.QMainWindow):
+class Application(QMainWindow):
 
     def __init__(self, **kwargs):
-        """  
-        Create a new Application object
+        super().__init__(**kwargs)
+        
+        # Create components
+        toolbar = ApplicationToolBar(parent=self)
+        widget  = ApplicationWidget(parent=self)
+        timer   = Timer(parent=self)
 
-        Parameters:
-            kwargs  : keyword arguments passed to the QMainWindow super-constructor
-        """
+        # Position components
+        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, toolbar)
+        self.setCentralWidget(widget)
 
-        qt_app = qt.QApplication([])
+        # Connect components
+        widget.starttimer.connect(timer.begin)
+        timer.step.connect(widget._captureImage)
+        timer.end.connect(widget._endCapture)
+        toolbar.generateImages.triggered.connect(widget._beginCapture)
+        toolbar.selectDirectory.triggered.connect(widget._selectDirectory)
+        toolbar.selectClassfile.triggered.connect(widget._selectClassfile)
+        toolbar.resetApplication.triggered.connect(widget._resetApplication)
+
+        # Show the application
+        self.show()
+
+class ApplicationToolBar(QToolBar):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs, floatable=False, movable=False)
+
+        self.generateImages   = QAction(QIcon('./resources/icons/camera.png'), 'Generate', self)
+        self.selectDirectory  = QAction(QIcon('./resources/icons/folder.png'), 'Select Directory', self)
+        self.selectClassfile  = QAction(QIcon('./resources/icons/file.png'), 'Select Classfile', self)
+        self.resetApplication = QAction(QIcon('./resources/icons/refresh.png'), 'Reset Application', self)
+
+        self.addActions([self.generateImages, self.selectDirectory, self.selectClassfile, self.resetApplication])
+
+class ApplicationWidget(QWidget):
+
+    starttimer = pyqtSignal(int, int)
+
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.setWindowTitle('Image Capture Tool')
-        self.setFixedWidth(1200)
-        interface = Interface(app=self)
-        self.setCentralWidget(interface)
+        self.feed      = CameraView(parent=self)
+        self.directory = QLineEdit(parent=self, text=getcwd())
+        self.directory.setReadOnly(True)
+        self.classfile = QLineEdit(parent=self)
+        self.classfile.setReadOnly(True)
+        self.images    = QSpinBox(parent=self, minimum=1, maximum=100)
+        self.rate      = QSpinBox(parent=self, minimum=1, maximum=100)
+        self.label     = QLineEdit(parent=self)
+        self.error     = QLabel(parent=self, text=' ')
+        self.progress  = QProgressBar(parent=self, orientation=Qt.Orientation.Horizontal, enabled=False, value=0, minimum=0, maximum=100)
 
-        self.show()
-        exit(qt_app.exec())
+        form = QFormLayout()
+        form.addRow(self.feed)
+        form.addRow('Directory:', self.directory)
+        form.addRow('Classfile:', self.classfile)
+        form.addRow('Images:', self.images)
+        form.addRow('Rate:', self.rate)
+        form.addRow('Label:', self.label)
+        form.addRow(self.error)
+        form.addRow(self.progress)
+        self.setLayout(form)
+
+    # -- Slots ----------------------------------------------------------------
+
+    def _beginCapture(self):
+        dir    = self.directory.text()
+        file   = self.classfile.text()
+        images = self.images.value()
+        rate   = self.rate.value()
+        label  = self.label.text()
+
+        error_msg = None
+        if   len(dir) < 1     : error_msg = 'No directory provided'
+        elif not isdir(dir)   : error_msg = 'Invalid directory provided'
+        elif len(file) < 1    : error_msg = 'No classfile provided'
+        elif not isfile(file) : error_msg = 'Invalid classfile provided'
+        elif images < 1       : error_msg = 'Number of images must be greater than 0'
+        elif rate < 1         : error_msg = 'Images per sec must be greater than 0'
+        elif len(label) < 1   : error_msg = 'No label provided'
+
+        if error_msg:
+            self.error.setText(f'Error: {error_msg}')
+            return
+        else:
+            self.error.setText(f' ')
+            self.progress.setEnabled(True)
+            self.progress.setValue(0)
+            self.starttimer.emit(images, rate)
+
+    def _captureImage(self, completion):
+        self.progress.setValue(int(completion*100))
+        print('Capture!')
+
+    def _endCapture(self):
+        print('Capture complete!')
+        self.progress.setValue(0)
+        self.progress.setEnabled(False)
+
+    def _selectDirectory(self):
+        dirname = QFileDialog.getExistingDirectoryUrl(parent=self).toLocalFile()
+        if len(dirname) > 0: self.directory.setText(dirname)
+
+    def _selectClassfile(self):
+        filename = QFileDialog.getOpenFileUrl(parent=self, filter='CSV (*.csv)')[0].toLocalFile()
+        if len(filename) > 0: self.classfile.setText(filename)
+
+    def _resetApplication(self):
+        self.directory.setText(getcwd())
+        self.classfile.setText('')
+        self.images.setValue(1)
+        self.rate.setValue(1)
+        self.label.setText('')
