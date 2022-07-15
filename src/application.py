@@ -1,8 +1,8 @@
 from os import listdir, remove, getcwd
 from os.path import exists, isfile, isdir
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QMainWindow, QWidget, QToolBar, QSpinBox, QLabel, QLineEdit, QFormLayout, QFileDialog, QProgressBar
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl
+from PyQt6.QtWidgets import QMainWindow, QWidget, QPushButton, QSpinBox, QLabel, QLineEdit, QFormLayout, QFileDialog, QProgressBar, QStatusBar
 from PyQt6.QtGui import QIcon, QAction
 
 from .camera import CameraView
@@ -10,118 +10,120 @@ from .timer import Timer
 
 class Application(QMainWindow):
 
+    start_timer = pyqtSignal(int, int)
+    end_timer = pyqtSignal()
+    show_error = pyqtSignal(str)
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
-        # Create components
-        toolbar = ApplicationToolBar(parent=self)
-        widget  = ApplicationWidget(parent=self)
-        timer   = Timer(parent=self)
 
-        # Position components
-        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, toolbar)
-        self.setCentralWidget(widget)
+        # Create the central widget
+        self.root = QWidget(parent=self)
+        self.setCentralWidget(self.root)
 
-        # Connect components
-        widget.starttimer.connect(timer.begin)
-        timer.step.connect(widget._captureImage)
-        timer.end.connect(widget._endCapture)
-        toolbar.generateImages.triggered.connect(widget._beginCapture)
-        toolbar.selectDirectory.triggered.connect(widget._selectDirectory)
-        toolbar.selectClassfile.triggered.connect(widget._selectClassfile)
-        toolbar.resetApplication.triggered.connect(widget._resetApplication)
+        # Create the timer used to capture the images at regular intervals
+        self.timer = Timer()
 
-        # Show the application
+        # Object variables used to store the directory and classfile paths
+        self.directory = None
+        self.classfile = None
+
+        # Construct the central widget's sub-components
+        form = QFormLayout()
+        self.root.setLayout(form)
+
+        self.feed = CameraView()
+        self.images = QSpinBox(parent=self, minimum=1, maximum=500)
+        self.rate = QSpinBox(parent=self, minimum=1, maximum=100, value=50)
+        self.label = QLineEdit(parent=self)
+        self.generate = QPushButton(parent=self, text='Generate')
+        self.error = QLabel(parent=self, text=' ')
+        self.progress = QProgressBar(parent=self, minimum=0, maximum=100, enabled=False, value=0)
+
+        form.addRow(self.feed)
+        form.addRow('Images', self.images)
+        form.addRow('Rate', self.rate)
+        form.addRow('Label', self.label)
+        form.addRow(self.generate)
+        form.addRow(self.progress)
+        form.addRow(self.error)
+
+        # Connect the components together
+        self.generate.clicked.connect(self._begin)
+        self.start_timer.connect(self.timer._begin)
+        self.end_timer.connect(self.timer._end)
+        self.timer.step.connect(self._capture)
+        self.timer.end.connect(self._end)
+        self.show_error.connect(self._seterror)
+
+        # Show the final application
         self.show()
 
-class ApplicationToolBar(QToolBar):
+    def _begin(self):
+        # Perform some basic validation
+        msg = None
+        if self.images.value() < 1:
+            msg = 'Images is expected to be greater than 1'
+        elif self.rate.value() < 1:
+            msg = 'Rate is expected to be greater than 1'
+        elif len(self.label.text()) < 1:
+            msg = 'Label is expected to be atleast one character'
+        self.show_error.emit(msg)
+        if msg: return
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs, floatable=False, movable=False)
+        # Request directory and classfile input from the user
+        self.directory = None
+        self.classfile = None
 
-        self.generateImages   = QAction(QIcon('./resources/icons/camera.png'), 'Generate', self)
-        self.selectDirectory  = QAction(QIcon('./resources/icons/folder.png'), 'Select Directory', self)
-        self.selectClassfile  = QAction(QIcon('./resources/icons/file.png'), 'Select Classfile', self)
-        self.resetApplication = QAction(QIcon('./resources/icons/refresh.png'), 'Reset Application', self)
-
-        self.addActions([self.generateImages, self.selectDirectory, self.selectClassfile, self.resetApplication])
-
-class ApplicationWidget(QWidget):
-
-    starttimer = pyqtSignal(int, int)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.feed      = CameraView(parent=self)
-        self.directory = QLineEdit(parent=self, text=getcwd())
-        self.directory.setReadOnly(True)
-        self.classfile = QLineEdit(parent=self)
-        self.classfile.setReadOnly(True)
-        self.images    = QSpinBox(parent=self, minimum=1, maximum=100)
-        self.rate      = QSpinBox(parent=self, minimum=1, maximum=100)
-        self.label     = QLineEdit(parent=self)
-        self.error     = QLabel(parent=self, text=' ')
-        self.progress  = QProgressBar(parent=self, orientation=Qt.Orientation.Horizontal, enabled=False, value=0, minimum=0, maximum=100)
-
-        form = QFormLayout()
-        form.addRow(self.feed)
-        form.addRow('Directory:', self.directory)
-        form.addRow('Classfile:', self.classfile)
-        form.addRow('Images:', self.images)
-        form.addRow('Rate:', self.rate)
-        form.addRow('Label:', self.label)
-        form.addRow(self.error)
-        form.addRow(self.progress)
-        self.setLayout(form)
-
-    # -- Slots ----------------------------------------------------------------
-
-    def _beginCapture(self):
-        dir    = self.directory.text()
-        file   = self.classfile.text()
-        images = self.images.value()
-        rate   = self.rate.value()
-        label  = self.label.text()
-
-        error_msg = None
-        if   len(dir) < 1     : error_msg = 'No directory provided'
-        elif not isdir(dir)   : error_msg = 'Invalid directory provided'
-        elif len(file) < 1    : error_msg = 'No classfile provided'
-        elif not isfile(file) : error_msg = 'Invalid classfile provided'
-        elif images < 1       : error_msg = 'Number of images must be greater than 0'
-        elif rate < 1         : error_msg = 'Images per sec must be greater than 0'
-        elif len(label) < 1   : error_msg = 'No label provided'
-
-        if error_msg:
-            self.error.setText(f'Error: {error_msg}')
+        directory = QFileDialog.getExistingDirectoryUrl(parent=self, caption='Select a directory', directory=QUrl(f'{getcwd()}/')).toLocalFile()
+        if len(directory) < 1:
+            self.show_error.emit('Failed to select a directory')
             return
         else:
-            self.error.setText(f' ')
-            self.progress.setEnabled(True)
-            self.progress.setValue(0)
-            self.starttimer.emit(images, rate)
+            self.directory = directory
+        
+        classfile = QFileDialog.getSaveFileUrl(parent=self, caption='Select a classfile', directory=QUrl(f'{getcwd()}/'), filter='CSV (*.csv)', options=QFileDialog.Option.DontConfirmOverwrite)[0].toLocalFile()
+        if len(classfile) < 1:
+            self.show_error.emit('Failed to select a classfile')
+            return
+        else:
+            self.classfile = classfile
+        
+        print(f'D: {self.directory}, C: {self.classfile}')
+        self.progress.setEnabled(True)
+        self.progress.setValue(0)
+        self.start_timer.emit(self.images.value(), self.rate.value())
 
-    def _captureImage(self, completion):
+    def _capture(self, completion, counter):
+        filename = f'{counter}.jpg'
+        path = f'{self.directory}/{filename}'
+
+        if exists(path):
+            self.end_timer.emit()
+            self.show_error.emit(f'Encountered a duplicate on {filename}')
+            return
+        else:
+            response = self.feed.get().save(path)
+            if not response:
+                self.end_timer.emit()
+                self.show_error.emit(f'Encountered an unknown error on {filename}')
+                return
+
+        with open(self.classfile, mode='a') as file:
+            file.write(f'{filename},{self.label.text()}\n')
+
         self.progress.setValue(int(completion*100))
-        print('Capture!')
+        print(counter)
 
-    def _endCapture(self):
-        print('Capture complete!')
+    def _end(self):
         self.progress.setValue(0)
         self.progress.setEnabled(False)
+        self.directory = None
+        self.classfile = None
+        
+    def _seterror(self, text):
+        if text:
+            self.error.setText(f'Error: {text}')
+        else:
+            self.error.setText(f' ')
 
-    def _selectDirectory(self):
-        dirname = QFileDialog.getExistingDirectoryUrl(parent=self).toLocalFile()
-        if len(dirname) > 0: self.directory.setText(dirname)
-
-    def _selectClassfile(self):
-        filename = QFileDialog.getOpenFileUrl(parent=self, filter='CSV (*.csv)')[0].toLocalFile()
-        if len(filename) > 0: self.classfile.setText(filename)
-
-    def _resetApplication(self):
-        self.directory.setText(getcwd())
-        self.classfile.setText('')
-        self.images.setValue(1)
-        self.rate.setValue(1)
-        self.label.setText('')
