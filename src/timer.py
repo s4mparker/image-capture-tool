@@ -11,7 +11,7 @@ class Timer(QTimer):
         self.target  = 0
         self.timeout.connect(self.iterate)
 
-    def run(self, n, rate=1):
+    def begin(self, n, rate=1):
         self.counter    = 0
         self.target     = n
         self.setInterval(int(1000 / rate))
