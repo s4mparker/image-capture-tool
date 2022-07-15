@@ -22,5 +22,8 @@ class Timer(QTimer):
             self.counter +=1
             self.step.emit(float(self.counter / self.target), self.counter)
         else:
-            self.stop()
-            self.end.emit()
+            self._end()
+
+    def _end(self):
+        self.stop()
+        self.end.emit()
