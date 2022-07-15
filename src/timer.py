@@ -6,7 +6,7 @@ class Timer(QTimer):
     end     = pyqtSignal()
 
     def __init__(self, **kwargs):
-        super().__init__(kwargs)
+        super().__init__(**kwargs)
         self.counter = 0
         self.target  = 0
         self.timeout.connect(self.iterate)
