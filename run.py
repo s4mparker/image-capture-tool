@@ -5,5 +5,4 @@ if __name__ == '__main__':
     from src.application import Application
     from sys import exit
     app = Application()
-    
     exit(qt.exec())
