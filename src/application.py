@@ -113,7 +113,6 @@ class Application(QMainWindow):
             file.write(f'{filename},{self.label.text()}\n')
 
         self.progress.setValue(int(completion*100))
-        print(counter)
 
     def _end(self):
         self.progress.setValue(0)
