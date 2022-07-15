@@ -32,4 +32,4 @@ class CameraView(QLabel):
         self.setPixmap(image)
 
     def get(self):
-        return self.pixmap
+        return self.pixmap()
