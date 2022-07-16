@@ -2,28 +2,28 @@ from PyQt6.QtCore import QTimer, pyqtSignal
 
 class Timer(QTimer):
 
-    step    = pyqtSignal(float, int)
-    end     = pyqtSignal()
+    step     = pyqtSignal(float, int)
+    complete = pyqtSignal()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.counter = 0
         self.target  = 0
-        self.timeout.connect(self._iterate)
+        self.timeout.connect(self.slot_iterate)
 
-    def _begin(self, n, rate):
+    def begin(self, n, rate):
         self.counter    = 0
         self.target     = n
         self.setInterval(int(1000 / rate))
         self.start()
 
-    def _iterate(self):
+    def slot_iterate(self):
         if self.counter < self.target:
             self.counter +=1
             self.step.emit(float(self.counter / self.target), self.counter)
         else:
-            self._end()
+            self.end()
 
-    def _end(self):
+    def end(self):
         self.stop()
-        self.end.emit()
+        self.complete.emit()
