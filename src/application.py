@@ -70,7 +70,7 @@ class Application(QMainWindow):
         grid.addWidget(self.images, 1, 3)
         grid.addWidget(QLabel(parent=self, text='File Extension:'), 2, 0)
         grid.addWidget(self.extension, 2, 1)
-        grid.addWidget(QLabel(parent=self, text='Rate (p/s):'), 2, 2)
+        grid.addWidget(QLabel(parent=self, text='Rate (#/s):'), 2, 2)
         grid.addWidget(self.rate, 2, 3)
         grid.addWidget(QLabel(parent=self, text='Filename Format:'), 3, 0)
         grid.addWidget(self.filename_format, 3, 1)

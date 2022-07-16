@@ -5,7 +5,7 @@ import cv2
 
 class CameraView(QLabel):
 
-    blank = QPixmap(QImage('./resources/error.png'))
+    blank = QPixmap(QImage('./resources/error.jpg'))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
